@@ -89,6 +89,22 @@ BEGIN
     ha_pclock => ha_pclock
   );
 
+  MMIO_INTERFACE: ENTITY work.mmio PORT MAP
+  (
+    ha_mmval => ha_mmval,
+    ha_mmcfg => ha_mmcfg,
+    ha_mmrnw => ha_mmrnw,
+    ha_mmdw => ha_mmdw,
+    ha_mmad => ha_mmad,
+    ha_mmadpar => ha_mmadpar,
+    ha_mmdata => ha_mmdata,
+    ha_mmdatapar => ha_mmdatapar,
+    ah_mmack => ah_mmack,
+    ah_mmdata => ah_mmdata,
+    ah_mmdatapar => ah_mmdatapar,
+    ha_pclock => ha_pclock
+  );
+  
   -- Command Interface
   ah_cvalid <= '0';
   ah_ctag <= (OTHERS => '0');
@@ -104,10 +120,6 @@ BEGIN
   ah_brlat <= X"1";
   ah_brdata <= (OTHERS => '0');
   ah_brpar <= (OTHERS => '0');
-  -- MMIO Interface 
-  ah_mmack <= '0';
-  ah_mmdata <= (OTHERS => '0');
-  ah_mmdatapar <= '0';
 
 END ARCHITECTURE;
 
