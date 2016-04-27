@@ -18,7 +18,11 @@ PORT
   ah_jyield         : OUT STD_LOGIC;
   ah_tbreq          : OUT STD_LOGIC;
   ah_paren          : OUT STD_LOGIC;
-  ha_pclock         :  IN STD_LOGIC
+  ha_pclock         :  IN STD_LOGIC;
+  -- User signals
+  afu_reset         : OUT STD_LOGIC;
+  afu_running       : OUT STD_LOGIC;
+  afu_done          :  IN STD_LOGIC
 );
 END ENTITY;
 
@@ -55,7 +59,10 @@ BEGIN
         WHEN RESET =>
           afu_next_state <= AFU_WAIT;
         WHEN RUNNING =>
-          afu_next_state <= DONE;
+          afu_next_state <= RUNNING;
+          IF(afu_done = '1') THEN
+            afu_next_state <= DONE;
+          END IF;
         WHEN DONE =>
           afu_next_state <= AFU_WAIT;
         WHEN OTHERS =>
@@ -86,6 +93,9 @@ BEGIN
 
   ah_jdone <= datapath_done or reset_ack;
   ah_jrunning <= datapath_running;
+  -- User signals for datapath
+  afu_reset <= reset_ack;
+  afu_running <= datapath_running;
   -- AFU supports parity on PSL Interfaces
   ah_paren <= '1';
   -- AFU ignores errors and does not forward them to host
