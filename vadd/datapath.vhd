@@ -55,6 +55,7 @@ ARCHITECTURE logic OF datapath IS
 -- CAPI PSL Command Opcodes 
 CONSTANT READ_CL_NA   : STD_LOGIC_VECTOR(12 DOWNTO 0) := '0' & X"A00";
 CONSTANT WRITE_NA     : STD_LOGIC_VECTOR(12 DOWNTO 0) := '0' & X"D00";
+CONSTANT RESET_COM    : STD_LOGIC_VECTOR(12 DOWNTO 0) := '0' & X"001";
 -- Buffer Interface read latency. Currently req. to be 1
 CONSTANT READ_LAT     : STD_LOGIC_VECTOR(3 DOWNTO 0) := X"1";
 -- Tags for read and write commands
@@ -64,6 +65,7 @@ CONSTANT INPUT2_TAG   : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"02";
 CONSTANT OUTPUT_TAG   : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"03";
 CONSTANT DONE_TAG     : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"04";
 CONSTANT COUNT_TAG    : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"05";
+CONSTANT RESET_TAG    : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"06";
 -- WED offset for done flag and cycle count register
 CONSTANT DONE_OFFSET  : INTEGER := 32;
 CONSTANT COUNT_OFFSET : INTEGER := 40;
@@ -74,7 +76,7 @@ SUBTYPE  IN2_RANGE    IS NATURAL RANGE 191 DOWNTO 128;
 SUBTYPE  OUT_RANGE    IS NATURAL RANGE 255 DOWNTO 192;
 
 TYPE DATAPATH_STATE IS (RESET, WED_REQ, READ_REQ, WRITE_REQ, WRITE_DONE, 
-    WRITE_COUNT, WAIT_REQ, DONE);
+    WRITE_COUNT, WAIT_REQ, RESET_REQ, DONE);
 
 SIGNAL data_cur_state : DATAPATH_STATE := RESET;
 SIGNAL data_next_state: DATAPATH_STATE := RESET;
@@ -98,6 +100,8 @@ SIGNAL in1_response   : STD_LOGIC;
 SIGNAL in2_response   : STD_LOGIC;
 -- Response for output write command on Response Interface
 SIGNAL out_response   : STD_LOGIC;
+-- Response for reset command on Response Interface
+SIGNAL reset_response : STD_LOGIC;
 -- Register for input1 data
 SIGNAL input1_data    : STD_LOGIC_VECTOR(1023 DOWNTO 0);
 -- Register for input2 data
@@ -138,13 +142,15 @@ BEGIN
         data_next_state <= WAIT_REQ;
       WHEN WRITE_REQ =>
         data_next_state <= WAIT_REQ;
+      WHEN RESET_REQ =>
+        data_next_state <= WAIT_REQ;
       WHEN WRITE_DONE =>
         data_next_state <= WAIT_REQ;
       WHEN WRITE_COUNT =>
         data_next_state <= WAIT_REQ;
       WHEN WAIT_REQ =>
         data_next_state <= WAIT_REQ;
-        IF(ha_rvalid = '1') THEN
+        IF(ha_rvalid = '1' AND ha_response = X"00") THEN
           CASE ha_rtag IS
             WHEN WED_TAG =>
               data_next_state <= READ_REQ;
@@ -168,9 +174,13 @@ BEGIN
               data_next_state <= DONE;  
             WHEN COUNT_TAG =>
               data_next_state <= WRITE_DONE;
+            WHEN RESET_TAG =>
+              data_next_state <= READ_REQ;
             WHEN OTHERS =>
               data_next_state <= WAIT_REQ;
           END CASE;
+        ELSIF(ha_rvalid = '1' AND ha_response /= X"00") THEN
+          data_next_state <= RESET_REQ;  
         END IF;
       WHEN DONE =>
         data_next_state <= DONE;
@@ -209,15 +219,15 @@ BEGIN
       in_ptr1 <= bwdata(IN1_RANGE);
       in_ptr2 <= bwdata(IN2_RANGE);
       out_ptr <= bwdata(OUT_RANGE);
-    ELSIF(in1_response = '1') THEN
+    ELSIF(in1_response = '1' AND ha_response = X"00") THEN
       -- Increment input1 pointer
       in_ptr1 <= STD_LOGIC_VECTOR(UNSIGNED(in_ptr1) + 
           TO_UNSIGNED(128, in_ptr1'LENGTH));
-    ELSIF(in2_response = '1') THEN
+    ELSIF(in2_response = '1' AND ha_response = X"00") THEN
       -- Increment input2 pointer
       in_ptr2 <= STD_LOGIC_VECTOR(UNSIGNED(in_ptr2) +
           TO_UNSIGNED(128, in_ptr2'LENGTH));
-    ELSIF(out_response = '1') THEN
+    ELSIF(out_response = '1' AND ha_response = X"00") THEN
       -- Increment output pointer
       out_ptr <= STD_LOGIC_VECTOR(UNSIGNED(out_ptr) +
           TO_UNSIGNED(128, out_ptr'LENGTH));
@@ -226,8 +236,13 @@ BEGIN
           TO_UNSIGNED(32, curr_pos'LENGTH));
     END IF;
     IF(in1_response = '1' OR in2_response = '1') THEN
-      -- Toggle input select (input1 or input2)
-      input_select <= NOT input_select;
+      IF(ha_response = X"00") THEN
+        -- Toggle input select (input1 or input2)
+        input_select <= NOT input_select;
+      ELSE
+        -- Invalid response (not DONE)
+        input_select <= '0';
+      END IF;
     END IF;
     IF(in1_valid = '1') THEN
       -- Grab entire cache line for input1 read command
@@ -306,6 +321,12 @@ BEGIN
       ah_compar <= odd_parity(WRITE_NA);
       ah_cea <= out_ptr;
       ah_ceapar <= odd_parity(out_ptr);
+    WHEN RESET_REQ =>
+      ah_cvalid <= '1';
+      ah_ctag <= RESET_TAG;
+      ah_ctagpar <= odd_parity(RESET_TAG);
+      ah_com <= RESET_COM;
+      ah_compar <= odd_parity(RESET_COM);
     WHEN WRITE_DONE => 
       ah_cvalid <= '1';
       ah_ctag <= DONE_TAG;
@@ -346,6 +367,7 @@ bwdata <= endian_swap(ha_bwdata);
 in1_response <= '1' WHEN ha_rtag = INPUT1_TAG AND ha_rvalid = '1' ELSE '0';
 in2_response <= '1' WHEN ha_rtag = INPUT2_TAG AND ha_rvalid = '1' ELSE '0';
 out_response <= '1' WHEN ha_rtag = OUTPUT_TAG AND ha_rvalid = '1' ELSE '0';
+reset_response <= '1' WHEN ha_rtag = RESET_TAG AND ha_rvalid = '1' ELSE '0';
 -- Select output for read on Buffer Interface
 output_line <= (OTHERS => '1') WHEN ha_brtag = DONE_TAG
     ELSE STD_LOGIC_VECTOR(SHIFT_LEFT(RESIZE(UNSIGNED(clock_count), output_line'LENGTH), 320)) 
