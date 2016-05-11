@@ -47,7 +47,8 @@ PORT
 -- User signals
   reset_datapath      :  IN STD_LOGIC;
   datapath_running    :  IN STD_LOGIC;
-  datapath_done       : OUT STD_LOGIC
+  datapath_done       : OUT STD_LOGIC;
+  datapath_error      : OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
 );
 END ENTITY;
 
@@ -66,6 +67,10 @@ CONSTANT OUTPUT_TAG   : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"03";
 CONSTANT DONE_TAG     : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"04";
 CONSTANT COUNT_TAG    : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"05";
 CONSTANT RESET_TAG    : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"06";
+-- Response codes for Response Interface
+CONSTANT DONE_RESP    : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"00";
+CONSTANT FLUSHED_RESP : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"06";
+CONSTANT PAGED_RESP   : STD_LOGIC_VECTOR(7 DOWNTO 0) := X"0A";
 -- WED offset for done flag and cycle count register
 CONSTANT DONE_OFFSET  : INTEGER := 32;
 CONSTANT COUNT_OFFSET : INTEGER := 40;
@@ -102,6 +107,12 @@ SIGNAL in2_response   : STD_LOGIC;
 SIGNAL out_response   : STD_LOGIC;
 -- Response for reset command on Response Interface
 SIGNAL reset_response : STD_LOGIC;
+-- ha_response DONE (command successful)
+SIGNAL response_done  : STD_LOGIC;
+-- ha_response PAGED or FLUSHED (need to issue reset command)
+SIGNAL response_retry : STD_LOGIC;
+-- ha_response AERROR, DERROR, NLOCK, NRES, FAULT, or FAILED (error occured)
+SIGNAL response_error : STD_LOGIC;
 -- Register for input1 data
 SIGNAL input1_data    : STD_LOGIC_VECTOR(1023 DOWNTO 0);
 -- Register for input2 data
@@ -150,7 +161,7 @@ BEGIN
         data_next_state <= WAIT_REQ;
       WHEN WAIT_REQ =>
         data_next_state <= WAIT_REQ;
-        IF(ha_rvalid = '1' AND ha_response = X"00") THEN
+        IF(response_done = '1') THEN
           CASE ha_rtag IS
             WHEN WED_TAG =>
               data_next_state <= READ_REQ;
@@ -179,8 +190,10 @@ BEGIN
             WHEN OTHERS =>
               data_next_state <= WAIT_REQ;
           END CASE;
-        ELSIF(ha_rvalid = '1' AND ha_response /= X"00") THEN
-          data_next_state <= RESET_REQ;  
+        ELSIF(response_retry = '1') THEN
+          data_next_state <= RESET_REQ; 
+        ELSIF(response_error = '1') THEN
+          data_next_state <= DONE;  
         END IF;
       WHEN DONE =>
         data_next_state <= DONE;
@@ -200,6 +213,7 @@ BEGIN
     output_data <= (OTHERS => '0');
     curr_pos <= (OTHERS => '0');
     clock_count <= (OTHERS => '0');
+    datapath_error <= (OTHERS => '0');
   ELSIF(ha_pclock = '1' AND ha_pclock'EVENT) THEN
     data_cur_state <= data_next_state;
     -- Match one cycle latency for reads on Buffer Interface
@@ -209,6 +223,10 @@ BEGIN
       clock_count <= STD_LOGIC_VECTOR(UNSIGNED(clock_count) 
           + TO_UNSIGNED(1, clock_count'LENGTH));
     END IF;
+    -- Error has occured. Forward response code to host
+    IF(response_error = '1') THEN
+      datapath_error <= ha_response;
+    END IF;
     -- Writes on Buffer Interface send half cache line each cycle
     IF(ha_bwvalid = '1') THEN
       word_index <= NOT word_index;
@@ -216,6 +234,7 @@ BEGIN
     -- Grab the information from the WED read command
     IF(wed_valid = '1' AND word_index = '0') THEN
       problem_size <= bwdata(SIZE_RANGE);
+
       in_ptr1 <= bwdata(IN1_RANGE);
       in_ptr2 <= bwdata(IN2_RANGE);
       out_ptr <= bwdata(OUT_RANGE);
@@ -273,7 +292,7 @@ BEGIN
   END IF;
 END PROCESS;
 
-my_signals: PROCESS(data_cur_state, ha_pclock)
+my_signals: PROCESS(data_cur_state, ha_rvalid)
 BEGIN
   ah_cvalid <= '0';
   ah_ctag <= (OTHERS => '0');
@@ -355,6 +374,27 @@ BEGIN
     WHEN DONE =>
       datapath_done <= '1';
   END CASE;
+
+  -- Decode response codes from Response Interface
+  -- DONE: Successful command completion
+  -- FLUSHED: PSL in flush state. Need to send reset command
+  -- PAGED: O/S has requested AFU to continue. Need to send reset command
+  -- All other responses indicate an error for this AFU
+  response_done <= '0';
+  response_retry <= '0';
+  response_error <= '0';
+  IF(ha_rvalid = '1') THEN
+    CASE ha_response IS
+      WHEN DONE_RESP =>
+        response_done <= '1';
+      WHEN PAGED_RESP =>
+        response_retry <= '1';
+      WHEN FLUSHED_RESP =>
+        response_retry <= '1';
+      WHEN OTHERS =>
+        response_error <= '1';
+    END CASE;
+  END IF;
 END PROCESS;
 
 -- Data valid for writes on Buffer Interface

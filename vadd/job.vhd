@@ -22,7 +22,8 @@ PORT
   -- User signals
   afu_reset         : OUT STD_LOGIC;
   afu_running       : OUT STD_LOGIC;
-  afu_done          :  IN STD_LOGIC
+  afu_done          :  IN STD_LOGIC;
+  afu_error         :  IN STD_LOGIC_VECTOR(7 DOWNTO 0)
 );
 END ENTITY;
 
@@ -98,8 +99,9 @@ BEGIN
   afu_running <= datapath_running;
   -- AFU supports parity on PSL Interfaces
   ah_paren <= '1';
-  -- AFU ignores errors and does not forward them to host
-  ah_jerror <= (OTHERS => '0');
+  -- Error has occured. Forward response code to host
+  ah_jerror(ah_jerror'LENGTH-1 DOWNTO afu_error'LENGTH) <= (OTHERS => '0');
+  ah_jerror(afu_error'RANGE) <= afu_error;
   -- Signals below are unused and set to default values 
   ah_jcack <= '0';
   ah_jyield <= '0';

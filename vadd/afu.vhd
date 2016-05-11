@@ -73,6 +73,7 @@ ARCHITECTURE logic OF afu IS
 SIGNAL reset_datapath   : STD_LOGIC;
 SIGNAL datapath_running : STD_LOGIC;
 SIGNAL datapath_done    : STD_LOGIC;
+SIGNAL datapath_error   : STD_LOGIC_VECTOR(7 DOWNTO 0);
 
 BEGIN
 
@@ -93,7 +94,8 @@ BEGIN
     ha_pclock => ha_pclock,
     afu_reset => reset_datapath,
     afu_running => datapath_running,
-    afu_done => datapath_done
+    afu_done => datapath_done,
+    afu_error => datapath_error
   );
 
   MMIO_INTERFACE: ENTITY work.mmio PORT MAP
@@ -153,7 +155,8 @@ BEGIN
     -- User signals
     reset_datapath => reset_datapath,
     datapath_running => datapath_running,
-    datapath_done => datapath_done
+    datapath_done => datapath_done,
+    datapath_error => datapath_error
   ); 
 
 END ARCHITECTURE;
