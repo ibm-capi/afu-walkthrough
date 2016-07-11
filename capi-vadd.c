@@ -63,14 +63,19 @@ int main(int argc, char *argv[])
   unsigned *input2 = (unsigned*) wed->input2;
   for (i=0; i<problem_size; i++)
   {
-    input1[i] = i;
-    input2[i] = i;
+    input1[i] = i << 8;
+    input2[i] = i << 8;
   }
   // Attach to the AFU. WED is sent to the FPGA
   cxl_afu_attach(afu, (__u64) wed);
   // Wait for the AFU to write to done
   printf("Waiting for done\n");
-  while (!wed->done) sleep(1);
+  unsigned timeout = 0;
+  while (!wed->done)
+  {
+    sleep(1);
+    if (++timeout == 15) break;
+  }
 
   printf("AFU finished\n");
 
@@ -83,7 +88,7 @@ int main(int argc, char *argv[])
   printf("output: %p\n", output);
   for (i=0; i<problem_size; i++)
   {
-    if(output[i] != 2*i)
+    if(output[i] != 2*(i<<8))
     {
       printf("out%i: %X\n", i, output[i]);
       errors++;
