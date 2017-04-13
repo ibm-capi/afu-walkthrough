@@ -1,9 +1,10 @@
 
 CC=gcc
 
-LIBCXL_DIR=/home/khill/pslse_src/pslse/libcxl
+LIBCXL_DIR=/home/${USER}/pslse/libcxl
+CXL_DIR=/home/${USER}/pslse/common
 
-CFLAGS= -g -I${LIBCXL_DIR} -I.
+CFLAGS= -g -I${LIBCXL_DIR} -I${CXL_DIR} -I.
 LFLAGS= -L${LIBCXL_DIR} -lm -lcxl -lpthread -lrt
 
 SRCS=capi-vadd.c
@@ -14,6 +15,10 @@ all: vadd
 
 .PHONY: vadd
 vadd: $(TARGET) 
+
+.PHONY: run
+run: all
+	LD_LIBRARY_PATH=${LIBCXL_DIR} ${PWD}/${TARGET}
 
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) $(LFLAGS) -o $@
