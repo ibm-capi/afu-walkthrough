@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
   // Display the values that are sent to the FPGA
   // These values will appear in the simulator when using PSLSE
   printf("WED: %p\n", wed);
-  printf("Size: %X\n", wed->size);
+  printf("Size: %lX\n", wed->size);
   printf("input1: %p\n", wed->input1);
   printf("input2: %p\n", wed->input2);
   printf("output: %p\n", wed->output);

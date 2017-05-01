@@ -3,6 +3,7 @@ CC=gcc
 
 LIBCXL_DIR=/home/${USER}/pslse/libcxl
 CXL_DIR=/home/${USER}/pslse/common
+USR_LIB=/usr/lib
 
 CFLAGS= -g -I${LIBCXL_DIR} -I${CXL_DIR} -I.
 LFLAGS= -L${LIBCXL_DIR} -lm -lcxl -lpthread -lrt
@@ -18,6 +19,10 @@ vadd: $(TARGET)
 
 .PHONY: run
 run: all
+	LD_LIBRARY_PATH=${USR_LIB} ${PWD}/${TARGET}
+
+.PHONY: sim
+sim: all
 	LD_LIBRARY_PATH=${LIBCXL_DIR} ${PWD}/${TARGET}
 
 $(TARGET): $(OBJS)
